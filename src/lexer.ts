@@ -20,103 +20,105 @@
        read 7=> numberBuffer ) is a Right Parenthesis, so put all the contents of numberbuffer together as a Literal 7 => resul
 */
 
-const WORD_OPERATORS = ['and', 'or'];
-
+const WORD_OPERATORS = ['and', 'or', 'in'];
+enum TokenMode {
+  None,
+  Word,
+  Literal,
+  Operator,
+  String
+}
 export class Tokenizer {
-  private wordBuffer: string[] = [];
-  private literalBuffer: string[] = [];
-  private whitespaceBuffer: string[] = [];
-  private operatorBuffer: string[] = [];
+  private buffer: string[] = [];
+  // private wordBuffer: string[] = [];
+  // private literalBuffer: string[] = [];
+  // private whitespaceBuffer: string[] = [];
+  // private operatorBuffer: string[] = [];
   private tokens: Token[] = [];
-  private inString = false;
+  private mode: TokenMode = TokenMode.None;
+  private tokenStart = 0;
 
   index: number = 0;
   ch: string = '';
 
+
+  private hasStringLiteral() {
+    return this.mode === TokenMode.String;
+  }
   private hasWords() {
-    return this.wordBuffer.length > 0;
+    return this.mode === TokenMode.Word;
   }
 
   private hasLiterals() {
-    return this.literalBuffer.length > 0;
+    return this.mode === TokenMode.Literal || this.mode === TokenMode.String;
   }
 
   private isWordOperator() {
-    return WORD_OPERATORS.includes(this.wordBuffer.join(''));
+    return WORD_OPERATORS.includes(this.buffer.join(''));
   }
-  private hasWhitespace() {
-    return this.whitespaceBuffer.length > 0;
-  }
+  // private hasWhitespace() {
+  //   return this.whitespaceBuffer.length > 0;
+  // }
 
   private hasOperators() {
-    return this.operatorBuffer.length > 0 || this.isWordOperator();
+    return this.mode === TokenMode.Operator || this.isWordOperator();
   }
 
-  private add(buffer: string[], builder: (buffer: string[]) => Token) {
-    this.tokens.push(builder(buffer));
-    buffer.length = 0;
+  private addToBuffer(ch: string) {
+    if (this.buffer.length === 0) {
+      this.tokenStart = this.index;
+    }
+    this.buffer.push(ch);
+  }
+
+  private add(builder: (buffer: string[], location: number) => Token) {
+    this.tokens.push(builder(this.buffer, this.tokenStart));
+    this.buffer.length = 0;
+    this.mode = TokenMode.None;
   }
 
   private addFunction() {
-    this.add(this.wordBuffer, func);
+    this.add(func);
   }
 
   private addLiteral() {
-    this.add(this.literalBuffer, literal);
+    this.add(literal);
 
-  }
-
-  private addWhitespace() {
-    this.add(this.whitespaceBuffer, whitespace);
   }
 
   private addOperator() {
     //  todo validate operator
     if (this.isWordOperator()) {
-      this.add(this.wordBuffer, operator);
+      this.add(operator);
     } else {
-      this.add(this.operatorBuffer, operator);
+      this.add(operator);
     }
   }
 
   private addField() {
-    this.add(this.wordBuffer, field);
+    this.add(field);
   }
 
   private tokenizeWordChar(ch: string) {
     if (this.hasOperators()) {
       this.addOperator();
-    } else if (this.hasWhitespace()) {
-      this.addWhitespace();
     } else if (this.hasLiterals()) {
       throw new Error(`Unexpected character ${ch} at ${this.index}`);
     }
 
-    this.wordBuffer.push(ch);
+    this.mode = TokenMode.Word;
+    this.addToBuffer(ch);
   }
 
-  private tokenizeLiteralChar(ch: string) {
+  private tokenizeLiteralChar(ch: string, isString: boolean = false) {
     if (this.hasOperators()) {
       this.addOperator();
-    } else if (this.hasWhitespace()) {
-      this.addWhitespace();
     } else if (this.hasWords()) {
       throw new Error(`Unexpected character ${ch} at ${this.index}`);
     }
 
-    this.literalBuffer.push(ch);
-  }
-
-  private tokenizeWhitespaceChar(ch: string) {
-    if (this.hasOperators()) {
-      this.addOperator();
-    } else if (this.hasLiterals()) {
-      this.addLiteral();
-    } else if (this.hasWords()) {
-      this.addField();
-    }
-
-    this.whitespaceBuffer.push(ch);
+    this.mode = isString ? TokenMode.String : TokenMode.Literal;
+    this.addToBuffer(ch);
   }
 
   private tokenizeOperator(ch: string) {
@@ -124,11 +126,10 @@ export class Tokenizer {
       this.addField();
     } else if (this.hasLiterals()) {
       this.addLiteral();
-    } else if (this.hasWhitespace()) {
-      this.addWhitespace();
     }
 
-    this.operatorBuffer.push(ch);
+    this.mode = TokenMode.Operator;
+    this.addToBuffer(ch);
   }
 
   private tokenizeComma(ch: string) {
@@ -136,13 +137,11 @@ export class Tokenizer {
       this.addField();
     } else if (this.hasLiterals()) {
       this.addLiteral();
-    } else if (this.hasWhitespace()) {
-      this.addWhitespace();
     } else if (this.hasOperators()) {
       throw new Error(`Unexpected whitespace at ${this.index}`);
     }
 
-    this.tokens.push(comma([ch]));
+    // this.tokens.push(comma([ch], this.index));
   }
 
   private tokenizeLeftParenthesis(ch: string) {
@@ -150,13 +149,11 @@ export class Tokenizer {
       this.addOperator();
     } else if (this.hasWords()) {
       this.addFunction();
-    } else if (this.hasWhitespace()) {
-      this.addWhitespace();
     } else if (this.hasLiterals()) {
       throw new Error(`Unexpected left parenthesis at ${this.index}`);
     } // todo: else? 
 
-    this.tokens.push(leftParenthesis([ch])); // todo: should this be buffered?
+    this.tokens.push(leftParenthesis([ch], this.index)); // todo: should this be buffered?
   }
 
   private tokenizeRightParenthesis(ch: string) {
@@ -164,57 +161,81 @@ export class Tokenizer {
       this.addField();
     } else if (this.hasLiterals()) {
       this.addLiteral();
-    } else if (this.hasWhitespace()) {
-      this.addWhitespace();
     } else if (this.hasOperators() || this.tokens[this.tokens.length - 1].type === TokenType.Comma) { // todo: should comma be buffered?
       throw new Error(`Unexpected right parenthesis at ${this.index}`);
     }
 
-    this.tokens.push(rightParenthesis([ch])); // todo: should this be buffered?
+    this.tokens.push(rightParenthesis([ch], this.index)); // todo: should this be buffered?
 
   }
 
   tokenize(input: string) {
-    this.wordBuffer = [];
-    this.literalBuffer = [];
-    this.whitespaceBuffer = [];
-    this.operatorBuffer = [];
+    this.buffer = [];
     this.tokens = [];
-    this.inString = false;
+    this.mode = TokenMode.None;
+    let tokenEnded = false;
 
     for (let idx = 0; idx < input.length; idx++) {
       this.index = idx;
       const ch = input[idx];
       this.ch = ch;
 
+      if (isWhitespace(ch)) {
+        tokenEnded = true;
+        continue;
+      }
+
       if (isQuote(ch)) {
+        if (tokenEnded) {
+          tokenEnded = false;
+          this.processBuffer();
+        }
         this.tokenizeQuote(ch);
       }
 
-      else if (!this.inString && (isLetter(ch) || (this.hasWords() && isPeriod(ch)))) {
+      else if (!this.hasStringLiteral() && (isLetter(ch) || (this.hasWords() && isPeriod(ch)))) {
+        if (tokenEnded) {
+          tokenEnded = false;
+          this.processBuffer();
+        }
+
         this.tokenizeWordChar(ch);
       }
 
+      else if (this.hasStringLiteral() || isDigit(ch) || (this.hasLiterals() && isPeriod(ch))) {
+        if (tokenEnded) {
+          tokenEnded = false;
+          this.processBuffer();
+        }
 
-      else if (this.inString || isDigit(ch) || (this.hasLiterals() && isPeriod(ch))) {
-        this.tokenizeLiteralChar(ch);
+        this.tokenizeLiteralChar(ch, this.hasStringLiteral());
       }
 
       // handle leading . as in .5
       else if (isPeriod(ch)) {
+        if (tokenEnded) {
+          tokenEnded = false;
+          this.processBuffer();
+        }
+
         this.tokenizeLiteralChar(ch)
       }
 
-
-      else if (isWhitespace(ch)) {
-        this.tokenizeWhitespaceChar(ch);
-      }
-
       else if (isOperator(ch)) {
+        if (tokenEnded) {
+          tokenEnded = false;
+          this.processBuffer();
+        }
+
         this.tokenizeOperator(ch);
       }
 
       else if (isComma(ch)) {
+        if (tokenEnded) {
+          tokenEnded = false;
+          this.processBuffer();
+        }
+
         this.tokenizeComma(ch);
       }
 
@@ -227,25 +248,27 @@ export class Tokenizer {
       }
     }
 
+    this.processBuffer();
+    return this.tokens;
+  }
+
+  private processBuffer() {
     if (this.hasLiterals()) {
       this.addLiteral();
     } else if (this.hasOperators()) {
       this.addOperator();
-    } else if (this.hasWhitespace()) {
-      this.addWhitespace();
     } else if (this.hasWords()) {
       this.addField();
     }
-    return this.tokens;
   }
+
   tokenizeQuote(ch: string) {
-    if (!this.inString) {
-      this.literalBuffer.push(ch);
-      this.inString = true;
+    this.addToBuffer(ch);
+    if (this.mode !== TokenMode.String) {
+      this.mode = TokenMode.String;
     } else {
-      this.literalBuffer.push(ch);
       this.addLiteral();
-      this.inString = false;
+      // todo: set to none?
     }
   }
 }
@@ -308,62 +331,98 @@ export enum TokenType {
 }
 export interface Token {
   type: TokenType;
-  value: string;
+  value: number | string | boolean;
+  start: number;
+  length: number;
 }
 
 
-function whitespace(value: string[]): Token {
+function whitespace(value: string[], start: number): Token {
   return {
     type: TokenType.Whitespace,
-    value: value.join('')
+    value: value.join(''),
+    start,
+    length: value.length
   }
 }
 
-function literal(value: string[]): Token {
+function literal(value: string[], start: number): Token {
+  let actualValue = null;
+  if (value[0] === '\'') {
+    actualValue = value.filter(c => c !== '\'').join('')
+  } else {
+    actualValue = value.join('');
+    // bool
+    if (actualValue === 'true') {
+      actualValue = true;
+    } else if (actualValue === 'false') {
+      actualValue = false;
+    }
+    // number
+    else if (!isNaN(actualValue = parseFloat(actualValue))) {
+
+    } else {
+      throw new Error(`Invalid literal value: ${value.join('')}`);
+    }
+  }
   return {
     type: TokenType.Literal,
-    value: value.join('')
+    value: actualValue,
+    start,
+    length: value.length
   }
 }
 
-function operator(value: string[]): Token {
+function operator(value: string[], start: number): Token {
   return {
     type: TokenType.Operator,
-    value: value.join('')
+    value: value.join(''),
+    start,
+    length: value.length
   }
 }
 
-function func(value: string[]): Token {
+function func(value: string[], start: number): Token {
   return {
     type: TokenType.Function,
-    value: value.join('')
+    value: value.join(''),
+    start,
+    length: value.length
   }
 }
 
-function field(value: string[]): Token {
+function field(value: string[], start: number): Token {
   return {
     type: TokenType.Field,
-    value: value.join('')
+    value: value.join(''),
+    start,
+    length: value.length
   }
 }
 
-function leftParenthesis(value: string[]): Token {
+function leftParenthesis(value: string[], start: number): Token {
   return {
     type: TokenType.LeftParenthesis,
-    value: value.join('')
+    value: value.join(''),
+    start,
+    length: value.length
   }
 }
 
-function rightParenthesis(value: string[]): Token {
+function rightParenthesis(value: string[], start: number): Token {
   return {
     type: TokenType.RightParenthesis,
-    value: value.join('')
+    value: value.join(''),
+    start,
+    length: value.length
   }
 }
 
-function comma(value: string[]): Token {
+function comma(value: string[], start: number): Token {
   return {
     type: TokenType.Comma,
-    value: value.join('')
+    value: value.join(''),
+    start,
+    length: value.length
   }
 }
