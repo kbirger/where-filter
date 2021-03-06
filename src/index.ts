@@ -1,5 +1,6 @@
+import { Evaluator } from './evaluator';
 import { Token, Tokenizer } from "./lexer";
-import { Evaluator, orderTokens, Parser } from './parser';
+import { orderTokens, Parser } from './parser';
 
 const tokenizer = new Tokenizer();
 // const tokens = tokenizer.tokenize("cat = 1 or bar >= 2");

@@ -31,6 +31,30 @@
       "sourceMaps": true,
       "cwd": "${workspaceRoot}",
       "protocol": "inspector",
-    }
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Jest Current File",
+      "program": "${workspaceFolder}/node_modules/.bin/jest",
+      "env": {
+        "TS_NODE_CACHE": "false"
+      },
+      "args": [
+        "${fileBasenameNoExtension}"
+      ],
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "disableOptimisticBPs": true,
+      "smartStep": true,
+      "skipFiles": [
+        "<node_internals>/**/*.js",
+        "<node_internals>/**",
+        // "${workspaceRoot}/node_modules/**/*.js"
+      ],
+      "windows": {
+        "program": "${workspaceFolder}/node_modules/jest/bin/jest",
+      }
+    },
   ]
 }

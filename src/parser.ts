@@ -82,7 +82,7 @@ export function orderTokens(tokens: Token[]) {
 }
 
 export class Parser {
-  parse(tokens: Token[]) {
+  parse(tokens: Token[]): Expression[] {
     let state: ParserState = ParserState.None;
     let token: Token | undefined;
     const expressions = [];
